@@ -1,83 +1,99 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
-	"os"
+	"strconv"
 
-	"github.com/joho/godotenv"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
+	"github.com/gorilla/mux"
 )
 
-// type User struct {
-// 	Name     string `json:"_name"`
-// 	LastName string `json:"_lastName"`
-// 	ID       int    `json:"_id"`
-// }
+type Movie struct {
+	ID       string    `json:"id"`
+	Isbn     string    `json:"isbn"`
+	Title    string    `json:"title"`
+	Director *Director `json:"directo"`
+}
+
+type Director struct {
+	Firstname string `json:"firsname"`
+	LastName  string `json:"lastName"`
+}
+
+var movies []Movie
+
+func getMovies(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("content-Type", "Application/json")
+	json.NewEncoder(w).Encode(movies)
+
+}
+
+func getMoviesById(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("content-Type", "Application/json")
+	params := mux.Vars(r)
+	for _, item := range movies {
+		if item.ID == params["id"] {
+			json.NewEncoder(w).Encode(item)
+		}
+	}
+	json.NewEncoder(w).Encode(movies)
+}
+
+func createMovie(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("content-Type", "Application/json")
+	var movie Movie
+	json.NewDecoder(r.Body).Decode(&movie)
+	movie.ID = strconv.Itoa(rand.Intn(1000000))
+	movies = append(movies, movie)
+	json.NewEncoder(w).Encode(movie)
+}
+
+func updateMovie(w http.ResponseWriter, r *http.Request) {
+	//Set json contect type
+	w.Header().Set("content_Tyoe", "Application/json")
+	//params
+	params := mux.Vars(r)
+	//loop over the movies, range
+	for index, item := range movies {
+		if item.ID == params["id"] {
+			movies = append(movies[:index], movies[index+1:]...)
+			var movie Movie
+			json.NewDecoder(r.Body).Decode(&movie)
+			movie.ID = params["id"]
+			movies = append(movies, movie)
+			json.NewEncoder(w).Encode(movie)
+		}
+	}
+}
+
+func deleteMovie(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("content-Type", "Application/json")
+	params := mux.Vars(r)
+	for index, item := range movies {
+		if item.ID == params["id"] {
+			movies = append(movies[:index], movies[index+1:]...)
+			break
+		}
+	}
+	json.NewEncoder(w).Encode(movies)
+
+}
 
 func main() {
-	if err := godotenv.Load(); err != nil {
-		log.Println("No .env file found")
-	}
+	r := mux.NewRouter()
 
-	uri := os.Getenv("MONGODB_URI")
-	if uri == "" {
-		log.Fatal("You must set your 'MONGODB_URI' environmental variable. See\n\t https://www.mongodb.com/docs/drivers/go/current/usage-examples/#environment-variable")
-	}
-	client, err := mongo.Connect(context.TODO(), options.Client().ApplyURI(uri))
-	if err != nil {
-		panic(err)
-	}
+	movies = append(movies, Movie{ID: "4123", Isbn: "1145223", Title: "Movie One", Director: &Director{Firstname: "Pedro", LastName: "Soto"}})
+	movies = append(movies, Movie{ID: "1234", Isbn: "1142323", Title: "Transformers", Director: &Director{Firstname: "Smith", LastName: "Rodriguez"}})
+	r.HandleFunc("/movies", getMovies).Methods("GET")
+	r.HandleFunc("/movies/{id}", getMoviesById).Methods("GET")
+	r.HandleFunc("/movies", createMovie).Methods("POST")
+	r.HandleFunc("/movies/{id}", updateMovie).Methods("PUT")
+	r.HandleFunc("/movies/{id}", deleteMovie).Methods("DELETE")
 
-	defer func() {
-		if err := client.Disconnect(context.TODO()); err != nil {
-			panic(err)
-		}
-	}()
+	fmt.Printf("Starting server at port 8000\n")
+	log.Fatal(http.ListenAndServe(":8000", r))
 
-	coll := client.Database("sample_mflix").Collection("movies")
-	var title string = "Back to the Future"
-
-	var result bson.M
-	err = coll.FindOne(context.TODO(), bson.D{{"title", title}}).Decode(&result)
-	if err == mongo.ErrNoDocuments {
-		fmt.Printf("No document was found with the title %s\n", title)
-		return
-	}
-	if err != nil {
-		panic(err)
-	}
-
-	jsonData, err := json.MarshalIndent(result, "", "    ")
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("%s\n", jsonData)
-
-	// r := mux.NewRouter()
-	// r.HandleFunc("/", homeHandler)
-	// r.HandleFunc("/page", pageHandler)
-	// http.Handle("/", r)
-
-	// http.ListenAndServe(":3000", nil)
-}
-
-func (u models.User) userf() User {
-	return User{Name: "jose", LastName: "calderon", ID: 123}
-}
-
-func homeHandler(w http.ResponseWriter, r *http.Request) {
-	u := User{Name: "jose", LastName: "Calderon", ID: 123}
-
-	fmt.Println(u.userf())
-	w.Write([]byte("Hello"))
-}
-
-func pageHandler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Another Page"))
 }
